@@ -30,29 +30,22 @@ initial_state(Nick, GUIAtom, ServerAtom) ->
 handle(St, {join, Channel}) ->
     % TODO: Implement this function
     % {reply, ok, St} ;
-
-    Ref = make_ref(),
-    #St.server ! {request, self(), Ref, {join, Channel, #St.nick}},
-    receive
-      {reply, Ref, ok} -> ok
-    end,
+    genserver:request(St#client_st.server, {join, Channel, St#client_st.nick, self()}),
     {reply, ok, St} ;
 
 % Leave channel
 handle(St, {leave, Channel}) ->
     % TODO: Implement this function
-    #St.server ! {request, self(), Ref, {leave, Channel, #St.nick}},
-    % {reply, ok, St} ;
-    receive
-    {reply, Ref, St} ;
-    end,
-    {reply, Ref, ok}-> ok;
+    % {reply, ok, St};
+    genserver:request(St#client_st.server, {leave, Channel, St#client_st.nick}),
+    {reply, ok, St};
 
 % Sending message (from GUI, to channel)
 handle(St, {message_send, Channel, Msg}) ->
     % TODO: Implement this function
     % {reply, ok, St} ;
-    {reply, {error, not_implemented, "message sending not implemented"}, St} ;
+    genserver:request(St#client_st.server, {message_send, Channel, Msg, St#client_st.nick}),
+    {reply, ok, St} ;
 
 % ---------------------------------------------------------------------------
 % The cases below do not need to be changed...
