@@ -1,9 +1,10 @@
-all: *.erl lib/*.erl
-	make -C lib
-	erl -compile *.erl lib/*.erl
+all: lex.erl grm.erl
+
+lex.erl: lex.xrl
+	erl -eval "leex:file(lex)" -noshell -detached
+
+grm.erl: grm.yrl
+	erl -eval "yecc:file(grm)" -noshell -detached
 
 clean:
-	rm -f *.beam *.dump
-
-run_tests: all
-	erl -noshell -eval "eunit:test(test_client), halt()"
+	rm -f lex.erl grm.erl
