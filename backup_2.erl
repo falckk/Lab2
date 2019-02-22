@@ -1,4 +1,4 @@
--module(server).
+-module(backup_2).
 -export([start/1, stop/1, handle/2]).
 
 % This record defines the structure of the state of a server.

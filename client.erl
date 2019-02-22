@@ -32,7 +32,7 @@ handle(St, {join, Channel}) ->
     % {reply, ok, St} ;
     Ans=genserver:request(St#client_st.server, {join, Channel, St#client_st.nick, self()}),
     if Ans==user_already_joined ->
-        {reply, {error, user_already_joined, "The user hade already joined the channel."}, St};
+        {reply, {error, user_already_joined, "The user had already joined the channel."}, St};
       true ->
         {reply, ok, St}
     end;
