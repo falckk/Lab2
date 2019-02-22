@@ -30,22 +30,37 @@ initial_state(Nick, GUIAtom, ServerAtom) ->
 handle(St, {join, Channel}) ->
     % TODO: Implement this function
     % {reply, ok, St} ;
-    genserver:request(St#client_st.server, {join, Channel, St#client_st.nick, self()}),
-    {reply, ok, St} ;
+    Ans=genserver:request(St#client_st.server, {join, Channel, St#client_st.nick, self()}),
+    if Ans==user_already_joined ->
+        {reply, {error, user_already_joined, "The user hade already joined the channel."}, St};
+      true ->
+        {reply, ok, St}
+    end;
 
 % Leave channel
 handle(St, {leave, Channel}) ->
     % TODO: Implement this function
     % {reply, ok, St};
-    genserver:request(St#client_st.server, {leave, Channel, St#client_st.nick}),
-    {reply, ok, St};
+
+      io:fwrite("Client got the message.~n"),
+
+    Ans=genserver:request(St#client_st.server, {leave, Channel, St#client_st.nick}),
+    if Ans==user_not_joined ->
+        {reply, {error, user_not_joined, "The user has not joined the channel."}, St};
+      true ->
+        {reply, ok, St}
+    end;
 
 % Sending message (from GUI, to channel)
 handle(St, {message_send, Channel, Msg}) ->
     % TODO: Implement this function
     % {reply, ok, St} ;
-    genserver:request(St#client_st.server, {message_send, Channel, Msg, St#client_st.nick}),
-    {reply, ok, St} ;
+    Ans=genserver:request(St#client_st.server, {message_send, Channel, Msg, St#client_st.nick}),
+    if Ans==user_not_joined ->
+        {reply, {error, user_not_joined, "The user has not joined the channel, so it can't send messages in it."}, St};
+      true ->
+        {reply, ok, St}
+    end;
 
 % ---------------------------------------------------------------------------
 % The cases below do not need to be changed...

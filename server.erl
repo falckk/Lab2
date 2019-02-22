@@ -44,13 +44,27 @@ handle_internal(St, {join, Channel_name, Nick, Pid}) ->
   Exists = channel_exists(Channels, Channel_name),
   if Exists ->
     Channel=find_channel(Channels, Channel_name),
-    New_channels=add_nick_to_channel(Channels, Channel, Nick),
-    New_state=St#server_st{list_of_Channels=New_channels, list_of_nick_to_Pid=New_list_of_nick_to_Pid},
-    {reply, ok, New_state};
+
+    %return user_already_joined if already joined
+    Nick_exists_in_channel=nick_exists(Channel#channel_st.list_of_nicks_in_channel, Nick),
+    if Nick_exists_in_channel ->
+        {reply, user_already_joined, St};
+      true ->
+        New_channels=add_nick_to_channel(Channels, Channel, Nick),
+        New_state=St#server_st{list_of_Channels=New_channels, list_of_nick_to_Pid=New_list_of_nick_to_Pid},
+
+        io:fwrite("~p~n", [New_state]),
+
+        {reply, ok, New_state}
+    end;
   true ->
     Channel=create_channel(Channel_name, Nick),
     New_channels=[Channel | Channels],
     New_state=St#server_st{list_of_Channels=New_channels, list_of_nick_to_Pid=New_list_of_nick_to_Pid},
+
+    io:fwrite("~p~n", [New_state]),
+    io:fwrite("~p~n", [Channel]),
+
     {reply, ok, New_state}
     end;
 
@@ -59,9 +73,17 @@ handle_internal(St, {leave, Channel_name, Nick}) ->
   Exists = channel_exists(Channels, Channel_name),
   if Exists ->
       Channel=find_channel(Channels, Channel_name),
-      New_channels=remove_nick_from_channel(Channels, Channel, Nick),
-      New_state=St#server_st{list_of_Channels=New_channels},
-      {reply, ok, New_state};
+      Nick_exists_in_channel=nick_exists(Channel#channel_st.list_of_nicks_in_channel, Nick),
+      if Nick_exists_in_channel->
+        New_channels=remove_nick_from_channel(Channels, Channel, Nick),
+        New_state=St#server_st{list_of_Channels=New_channels},
+
+        io:fwrite("~p~n", [New_state]),
+
+        {reply, ok, New_state};
+      true ->
+          {reply, user_not_joined, St}
+          end;
     true ->
       {reply, ok, St}
   end;
@@ -71,9 +93,16 @@ handle_internal(St, {message_send, Channel_name, Msg, Nick}) ->
   Exists = channel_exists(Channels, Channel_name),
   if Exists ->
     Channel=find_channel(Channels, Channel_name),
-    Nicks=Channel#channel_st.list_of_nicks_in_channel,
-    [send_message(Msg, Reciever, Channel_name, Nick, St)|| Reciever <- (Nicks--Nick)],
-    {reply, ok, St};
+
+    %return user_not_joined if not joined
+    Nick_exists_in_channel=nick_exists(Channel#channel_st.list_of_nicks_in_channel, Nick),
+    if Nick_exists_in_channel ->
+        Nicks=Channel#channel_st.list_of_nicks_in_channel,
+        [send_message(Msg, Reciever, Channel_name, Nick, St)|| Reciever <- (Nicks--[Nick])],
+        {reply, ok, St};
+      true ->
+        {reply, user_not_joined, St}
+    end;
   true ->
       %Error, maybe
       {reply, ok, St}
@@ -97,9 +126,9 @@ find_pid_list(_,_)-> pid_not_in_list.
 remove_nick_from_channel(Channels, Channel, Nick)->
     Nick_exists=nick_exists(Channel#channel_st.list_of_nicks_in_channel, Nick),
     if Nick_exists ->
-      New_channel=Channel#channel_st{list_of_nicks_in_channel=Channel#channel_st.list_of_nicks_in_channel--Nick},
-      New_Channels=Channels--Channel,
-      New_Channels++New_channel;
+      New_channel=Channel#channel_st{list_of_nicks_in_channel=Channel#channel_st.list_of_nicks_in_channel--[Nick]},
+      New_Channels=Channels--[Channel],
+      New_Channels++[New_channel];
     true ->
       Channels
     end.
@@ -139,7 +168,7 @@ add_nick_to_channel(Channels, Channel, Nick_to_add) ->
       Channels;
   true ->
       Old_channels=lists:delete(Channel, Channels),
-      New_channel=Channel#channel_st{list_of_nicks_in_channel=Channel#channel_st.list_of_nicks_in_channel++Nick_to_add},
+      New_channel=Channel#channel_st{list_of_nicks_in_channel=Channel#channel_st.list_of_nicks_in_channel++[Nick_to_add]},
         [New_channel | Old_channels]
   end.
 
