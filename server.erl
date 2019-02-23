@@ -1,23 +1,25 @@
 -module(server).
--export([start/1, stop/1, handle/2]).
+-export([start/1, stop/1, handle_server/2, handle_channel/2]).
 
 % This record defines the structure of the state of a server.
-% list_of_Channels is a list of channel_st.
+% list_of_Channels is a list of channel names.
+% list_of_nicks is a list of nicks.
 -record(server_st, {
     list_of_Channels,
-    list_of_nick_to_Pid
+    list_of_nicks
 }).
 
 % This record defines the structure of the state of a channel.
 -record(channel_st, {
-    channel_name,
-    list_of_nicks_in_channel
+    list_of_nicks_and_Pids_in_channel
 }).
 
-initial_state() ->
+%-----------------------------------------------------Server-----------------------------------
+
+initial_server_state() ->
     #server_st{
         list_of_Channels = [],
-        list_of_nick_to_Pid = []
+        list_of_nicks = []
     }.
 
 % Start a new server process with the given name
@@ -27,59 +29,55 @@ start(ServerAtom) ->
     % - Spawn a new process which waits for a message, handles it, then loops infinitely
     % - Register this process to ServerAtom
     % - Return the process ID
-    genserver:start(ServerAtom, initial_state() , fun handle/2). %starts a gen server, with the initial state of a server and returns its Pid.
+    genserver:start(ServerAtom, initial_server_state() , fun handle_server/2). %starts a genserver, with the initial state of a server and returns its Pid.
 
-handle(St, Data) ->
-  handle_internal(St, Data).
 
-handle_internal(St, {join, Channel_name, Nick, Pid}) ->
-  Nick_exists=lists:member({Nick, Pid}, St#server_st.list_of_nick_to_Pid),
+handle_server(St, {join, Channel_name, Nick, Pid}) ->
+  Nick_exists=lists:member(Nick, St#server_st.list_of_nicks),
   if Nick_exists ->
-      New_list_of_nick_to_Pid = St#server_st.list_of_nick_to_Pid;
+      New_list_of_nicks = St#server_st.list_of_nicks;
     true ->
-      New_list_of_nick_to_Pid = [{Nick, Pid} | St#server_st.list_of_nick_to_Pid]
+      New_list_of_nicks = [Nick| St#server_st.list_of_nicks]
   end,
 
   Channels=St#server_st.list_of_Channels,
-  Exists = channel_exists(Channels, Channel_name),
+  Exists = lists:member(Channel_name, Channels),
+  Channel=Channel_name,
   if Exists ->
-    Channel=find_channel(Channels, Channel_name),
-
     %return user_already_joined if already joined
-    Nick_exists_in_channel=nick_exists(Channel#channel_st.list_of_nicks_in_channel, Nick),
+    Nick_exists_in_channel=request(Channel, {check_nick_exists, Nick}),
     if Nick_exists_in_channel ->
         {reply, user_already_joined, St};
       true ->
-        New_channels=add_nick_to_channel(Channels, Channel, Nick),
-        New_state=St#server_st{list_of_Channels=New_channels, list_of_nick_to_Pid=New_list_of_nick_to_Pid},
+        request(Channel, {add_nick_to_channel, Nick, Pid}),
+        New_state=St#server_st{list_of_nicks=New_list_of_nicks},
 
         io:fwrite("~p~n", [New_state]),
 
         {reply, ok, New_state}
     end;
   true ->
-    Channel=create_channel(Channel_name, Nick),
+    start_channel(Channel_name, Nick, Pid),
     New_channels=[Channel | Channels],
-    New_state=St#server_st{list_of_Channels=New_channels, list_of_nick_to_Pid=New_list_of_nick_to_Pid},
+    New_state=St#server_st{list_of_Channels=New_channels, list_of_nicks=New_list_of_nicks},
 
     io:fwrite("~p~n", [New_state]),
 
     {reply, ok, New_state}
     end;
 
-handle_internal(St, {leave, Channel_name, Nick}) ->
+handle_server(St, {leave, Channel_name, Nick, Pid}) ->
   Channels=St#server_st.list_of_Channels,
-  Exists = channel_exists(Channels, Channel_name),
+  Exists = lists:member(Channel_name, Channels),
   if Exists ->
-      Channel=find_channel(Channels, Channel_name),
-      Nick_exists_in_channel=nick_exists(Channel#channel_st.list_of_nicks_in_channel, Nick),
+      Channel=Channel_name,
+      Nick_exists_in_channel=request(Channel, {check_nick_exists, Nick}),
       if Nick_exists_in_channel->
-        New_channels=remove_nick_from_channel(Channels, Channel, Nick),
-        New_state=St#server_st{list_of_Channels=New_channels},
+        Ans=request(Channel, {remove_nick_from_channel, Nick, Pid}),
 
-        io:fwrite("~p~n", [New_state]),
+        io:fwrite("~p~n", [St]),
 
-        {reply, ok, New_state};
+        {reply, Ans, St};
       true ->
           {reply, user_not_joined, St}
           end;
@@ -87,97 +85,16 @@ handle_internal(St, {leave, Channel_name, Nick}) ->
       {reply, ok, St}
   end;
 
-handle_internal(St, {message_send, Channel_name, Msg, Nick}) ->
-  Channels=St#server_st.list_of_Channels,
-  Exists = channel_exists(Channels, Channel_name),
-  if Exists ->
-    Channel=find_channel(Channels, Channel_name),
+handle_server(St, {check_nick_taken, Nick}) ->
+  Ans=lists:member(Nick, St#server_st.list_of_nicks),
+  {reply, Ans, St};
 
-    %return user_not_joined if not joinedserver
-    Nick_exists_in_channel=nick_exists(Channel#channel_st.list_of_nicks_in_channel, Nick),
-    if Nick_exists_in_channel ->
-        Nicks=Channel#channel_st.list_of_nicks_in_channel,
-        [send_message(Msg, Reciever, Channel_name, Nick, St)|| Reciever <- (Nicks--[Nick])],
-        {reply, ok, St};
-      true ->
-        {reply, user_not_joined, St}
-    end;
-  true ->
-      %Error, maybe
-      {reply, ok, St}
-  end.
-
-send_message(Msg, Reciever, Channel_name, Sender, St) ->
-  Pid=find_pid(St, Reciever),
-  genserver:request(Pid, {message_receive, Channel_name, Sender, Msg}),
-  ok.
-
-
-
-find_pid(St, Nick)->
-  find_pid_list(St#server_st.list_of_nick_to_Pid, Nick).
-
-find_pid_list([{Nick,Pid}|_], Nick) -> Pid;
-find_pid_list([_|T], Nick) -> find_pid_list(T, Nick);
-find_pid_list(_,_)-> pid_not_in_list.
-
-
-remove_nick_from_channel(Channels, Channel, Nick)->
-    Nick_exists=nick_exists(Channel#channel_st.list_of_nicks_in_channel, Nick),
-    if Nick_exists ->
-      New_channel=Channel#channel_st{list_of_nicks_in_channel=Channel#channel_st.list_of_nicks_in_channel--[Nick]},
-      New_Channels=Channels--[Channel],
-      New_Channels++[New_channel];
-    true ->
-      Channels
-    end.
-
-%Starts channel_exists.
-channel_exists(Channels, Channel_name) -> channel_exists(Channels, Channel_name, false).
-
-%Tail recursive check if there is a channel with the name given inside the list of channels.
-channel_exists([], _, Acc) -> Acc;
-
-channel_exists([H|T], Channel_name, Acc) ->
-  if Acc == true ->
-      Acc;
-  true ->
-    channel_exists(T, Channel_name, Acc orelse check_name(H, Channel_name))
-  end.
-
-%Checks if the name of the channel matches the name given.
-check_name(Channel_st, Channel_name) when is_record(Channel_st, channel_st) -> Channel_st#channel_st.channel_name==Channel_name;
-check_name(_,_) -> false.
-
-find_channel([H|T], Channel_name) ->
-  Head_matches=check_name(H, Channel_name),
-  if Head_matches ->
-      H;
-  true ->
-      find_channel(T, Channel_name)
-  end;
-find_channel([], _) ->
-  not_in_list.
-
-
-%If the nick does not exist in the channel, remove the current channel and replace it with a copy with the nick added.
-add_nick_to_channel(Channels, Channel, Nick_to_add) ->
-  Nick_exists=nick_exists(Channel#channel_st.list_of_nicks_in_channel, Nick_to_add),
-  if Nick_exists ->
-      Channels;
-  true ->
-      Old_channels=lists:delete(Channel, Channels),
-      New_channel=Channel#channel_st{list_of_nicks_in_channel=Channel#channel_st.list_of_nicks_in_channel++[Nick_to_add]},
-        [New_channel | Old_channels]
-  end.
-
-nick_exists([Nick|_], Nick)-> true;
-nick_exists([_|List_of_Nicks], Nick)-> nick_exists(List_of_Nicks, Nick);
-nick_exists( _, _)->false.
-
-%Creates a empty channel, which Nick is a part of.
-create_channel(Channel_name, Nick) ->
-  #channel_st{channel_name=Channel_name, list_of_nicks_in_channel=[Nick]}.
+handle_server(St, {change_nick, Nick, NewNick, Pid}) ->
+  Nicks=St#server_st.list_of_nicks,
+  New_list_of_nicks=[NewNick| Nicks--[Nick]],
+  [request(Channel, {change_nick, Nick, NewNick, Pid}) || Channel <- St#server_st.list_of_Channels],
+  New_state=St#server_st{list_of_nicks=New_list_of_nicks},
+  {reply, ok, New_state}.
 
 % Stop the server process registered to the given name,
 % together with any other associated processes
@@ -186,3 +103,73 @@ stop(ServerAtom) ->
     % Return ok
     genserver:stop(ServerAtom),
     ok.
+
+  %%--------------------------------------------CHANNEL---------------------------------------------------------------------------
+
+initial_channel_state(Nick, Pid) ->
+  #channel_st{
+    list_of_nicks_and_Pids_in_channel = [{Nick, Pid}]
+  }.
+
+%Creates a empty channel, which Nick and Pid is a part of.
+start_channel(Channel_name, Nick, Pid) ->
+  State=initial_channel_state(Nick, Pid),
+  genserver:start(Channel_name, State, fun handle_channel/2).
+
+
+handle_channel(St, {check_nick_exists, Nick}) ->
+  Nicks_and_Pids=St#channel_st.list_of_nicks_and_Pids_in_channel,
+  Nick_exists=nick_exists(Nicks_and_Pids, Nick),
+  {reply, Nick_exists, St};
+
+handle_channel(St, {add_nick_to_channel, Nick, Pid}) ->
+  Nicks_and_Pids=St#channel_st.list_of_nicks_and_Pids_in_channel,
+  Nick_exists=nick_exists(Nicks_and_Pids, Nick),
+  if Nick_exists ->
+      {reply, nick_exists, St};
+    true ->
+      New_nicks_and_Pids=[{Nick, Pid}|Nicks_and_Pids],
+      New_state=St#channel_st{list_of_nicks_and_Pids_in_channel=New_nicks_and_Pids},
+      {reply, ok, New_state}
+  end;
+
+handle_channel(St, {remove_nick_from_channel, Nick, Pid}) ->
+  Nicks_and_Pids=St#channel_st.list_of_nicks_and_Pids_in_channel,
+  Nick_exists=nick_exists(Nicks_and_Pids, Nick),
+  if Nick_exists ->
+      lists:delete({Nick, Pid}, Nicks_and_Pids),
+      {reply, ok, St};
+    true ->
+      {reply, user_not_joined, St}
+  end;
+
+handle_channel(St, {message_send, Msg, Nick, Channel_name, Pid}) ->
+  Nicks_and_Pids=St#channel_st.list_of_nicks_and_Pids_in_channel,
+  Nick_exists=nick_exists(Nicks_and_Pids, Nick),
+  if Nick_exists ->
+      [send_message(Msg, Reciever, Channel_name, Nick)|| {_, Reciever} <- [Nicks_and_Pids--[{Nick, Pid}]]],
+      {reply, ok, St};
+    true ->
+      {reply, user_not_joined, St}
+  end;
+
+handle_channel(St, {change_nick, Nick, NewNick, Pid}) ->
+  Nicks_and_pids=St#channel_st.list_of_nicks_and_Pids_in_channel,
+  New_nicks_and_Pids=[{NewNick, Pid}| Nicks_and_pids--[{Nick, Pid}]],
+  New_state=St#channel_st{list_of_nicks_and_Pids_in_channel=New_nicks_and_Pids},
+  {reply, ok, New_state}.
+
+
+  nick_exists([{Nick, _}|_], Nick)-> true;
+  nick_exists([_|List_of_Nicks], Nick)-> nick_exists(List_of_Nicks, Nick);
+  nick_exists( _, _)->false.
+
+  send_message(Msg, Reciever, Channel_name, Sender) ->
+    request(Reciever, {message_receive, Channel_name, Sender, Msg}),
+    ok.
+
+%-----------------------------------------------Other---------------------------------------
+
+%Simplify code
+request(Registered_name, Data) ->
+  genserver:request(Registered_name, Data).

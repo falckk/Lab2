@@ -30,7 +30,7 @@ initial_state(Nick, GUIAtom, ServerAtom) ->
 handle(St, {join, Channel}) ->
     % TODO: Implement this function
     % {reply, ok, St} ;
-    Ans=genserver:request(St#client_st.server, {join, Channel, St#client_st.nick, self()}),
+    Ans=request(St#client_st.server, {join, Channel, St#client_st.nick, self()}),
     if Ans==user_already_joined ->
         {reply, {error, user_already_joined, "The user had already joined the channel."}, St};
       true ->
@@ -44,7 +44,7 @@ handle(St, {leave, Channel}) ->
 
       io:fwrite("Client got the message.~n"),
 
-    Ans=genserver:request(St#client_st.server, {leave, Channel, St#client_st.nick}),
+    Ans=request(St#client_st.server, {leave, Channel, St#client_st.nick, self()}),
     if Ans==user_not_joined ->
         {reply, {error, user_not_joined, "The user has not joined the channel."}, St};
       true ->
@@ -55,7 +55,7 @@ handle(St, {leave, Channel}) ->
 handle(St, {message_send, Channel, Msg}) ->
     % TODO: Implement this function
     % {reply, ok, St} ;
-    Ans=genserver:request(St#client_st.server, {message_send, Channel, Msg, St#client_st.nick}),
+    Ans=request(Channel, {message_send, Msg, St#client_st.nick, Channel, self()}),
     if Ans==user_not_joined ->
         {reply, {error, user_not_joined, "The user has not joined the channel, so it can't send messages in it."}, St};
       true ->
@@ -70,9 +70,15 @@ handle(St, {message_send, Channel, Msg}) ->
 handle(St, whoami) ->
     {reply, St#client_st.nick, St} ;
 
-% Change nick (no check, local only)
+% Change nick
 handle(St, {nick, NewNick}) ->
-    {reply, ok, St#client_st{nick = NewNick}} ;
+    Nick_taken=request(St#client_st.server, {check_nick_taken, NewNick}),
+    if Nick_taken ->
+        {reply, {error, nick_taken, "The nickname is already taken."}, St};
+      true ->
+        request(St#client_st.server, {change_nick, St#client_st.nick, NewNick, self()}),
+        {reply, ok, St#client_st{nick = NewNick}}
+    end;
 
 % Incoming message (from channel, to GUI)
 handle(St = #client_st{gui = GUI}, {message_receive, Channel, Nick, Msg}) ->
@@ -87,3 +93,7 @@ handle(St, quit) ->
 % Catch-all for any unhandled requests
 handle(St, Data) ->
     {reply, {error, not_implemented, "Client does not handle this command"}, St} .
+
+%Simplify code
+request(Registered_name, Data) ->
+    genserver:request(Registered_name, Data).

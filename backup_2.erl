@@ -186,3 +186,28 @@ stop(ServerAtom) ->
     % Return ok
     genserver:stop(ServerAtom),
     ok.
+
+%-----------------------------------------------Also save this---------------------------------------
+
+
+
+
+%    %% Should be moved to client.
+%    handle_server(St, {message_send, Channel_name, Msg, Nick}) ->
+%      Channels=St#server_st.list_of_Channels,
+%      Exists = lists:member(Channel_name, Channels),
+%      if Exists ->
+%        Channel=Channel_name,
+%
+%        %return user_not_joined if not joinedserver
+%        Nick_exists_in_channel=request(Channel, {check_nick_exists, Nick}),
+%        if Nick_exists_in_channel ->
+%            request(Channel, {message_send, Msg, Nick}),
+%            {reply, ok, St};
+%          true ->
+%            {reply, user_not_joined, St}
+%        end;
+%      true ->
+%          %Error, maybe
+%          {reply, ok, St}
+%      end.
