@@ -30,20 +30,22 @@ initial_state(Nick, GUIAtom, ServerAtom) ->
 handle(St, {join, Channel}) ->
     % TODO: Implement this function
     % {reply, ok, St} ;
-    Ans=request(St#client_st.server, {join, Channel, St#client_st.nick, self()}),
-    if Ans==user_already_joined ->
-        {reply, {error, user_already_joined, "The user had already joined the channel."}, St};
+    Not_registered=(whereis(St#client_st.server)==undefined),
+    if Not_registered ->
+        {reply, {error, server_not_reached, "The server atom was unregistered."}, St};
       true ->
-        {reply, ok, St}
+        Ans=request(St#client_st.server, {join, Channel, St#client_st.nick, self()}),
+        if Ans==user_already_joined ->
+            {reply, {error, user_already_joined, "The user had already joined the channel."}, St};
+          true ->
+            {reply, ok, St}
+        end
     end;
 
 % Leave channel
 handle(St, {leave, Channel}) ->
     % TODO: Implement this function
     % {reply, ok, St};
-
-      io:fwrite("Client got the message.~n"),
-
     Ans=request(St#client_st.server, {leave, Channel, St#client_st.nick, self()}),
     if Ans==user_not_joined ->
         {reply, {error, user_not_joined, "The user has not joined the channel."}, St};
@@ -55,7 +57,7 @@ handle(St, {leave, Channel}) ->
 handle(St, {message_send, Channel, Msg}) ->
     % TODO: Implement this function
     % {reply, ok, St} ;
-    Ans=request(Channel, {message_send, Msg, St#client_st.nick, Channel, self()}),
+    Ans=request(list_to_atom(Channel), {message_send, Msg, St#client_st.nick, list_to_atom(Channel), self()}),
     if Ans==user_not_joined ->
         {reply, {error, user_not_joined, "The user has not joined the channel, so it can't send messages in it."}, St};
       true ->
@@ -82,7 +84,7 @@ handle(St, {nick, NewNick}) ->
 
 % Incoming message (from channel, to GUI)
 handle(St = #client_st{gui = GUI}, {message_receive, Channel, Nick, Msg}) ->
-    gen_server:call(GUI, {message_receive, Channel, Nick++"> "++Msg}),
+    gen_server:call(GUI, {message_receive, atom_to_list(Channel), Nick++"> "++Msg}),
     {reply, ok, St} ;
 
 % Quit client via GUI
@@ -91,7 +93,7 @@ handle(St, quit) ->
     {reply, ok, St} ;
 
 % Catch-all for any unhandled requests
-handle(St, Data) ->
+handle(St, _Data) ->
     {reply, {error, not_implemented, "Client does not handle this command"}, St} .
 
 %Simplify code

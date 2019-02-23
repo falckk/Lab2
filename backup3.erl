@@ -1,10 +1,10 @@
--module(server).
--export([start/1, stop/1, handle_server/2, handle_channel/2]).
+-module(backup3).
+-export([start/1, stop/1, handle_backup3/2, handle_channel/2]).
 
-% This record defines the structure of the state of a server.
+% This record defines the structure of the state of a backup3.
 % list_of_Channels is a list of channel names.
 % list_of_nicks is a list of nicks.
--record(server_st, {
+-record(_st, {
     list_of_Channels,
     list_of_nicks
 }).
@@ -14,34 +14,34 @@
     list_of_nicks_and_Pids_in_channel
 }).
 
-%-----------------------------------------------------Server-----------------------------------
+%-----------------------------------------------------backup3-----------------------------------
 
-initial_server_state() ->
-    #server_st{
+initial_backup3_state() ->
+    #backup3_st{
         list_of_Channels = [],
         list_of_nicks = []
     }.
 
-% Start a new server process with the given name
+% Start a new backup3 process with the given name
 % Do not change the signature of this function.
-start(ServerAtom) ->
+start(backup3Atom) ->
     % TODO Implement function
     % - Spawn a new process which waits for a message, handles it, then loops infinitely
-    % - Register this process to ServerAtom
+    % - Register this process to backup3Atom
     % - Return the process ID
-    genserver:start(ServerAtom, initial_server_state() , fun handle_server/2). %starts a genserver, with the initial state of a server and returns its Pid.
+    genbackup3:start(backup3Atom, initial_backup3_state() , fun handle_backup3/2). %starts a genbackup3, with the initial state of a backup3 and returns its Pid.
 
 
-handle_server(St, {join, Channel_name, Nick, Pid}) ->
+handle_backup3(St, {join, Channel_name, Nick, Pid}) ->
   Channel=list_to_atom(Channel_name),
-  Nick_exists=lists:member(Nick, St#server_st.list_of_nicks),
+  Nick_exists=lists:member(Nick, St#backup3_st.list_of_nicks),
   if Nick_exists ->
-      New_list_of_nicks = St#server_st.list_of_nicks;
+      New_list_of_nicks = St#backup3_st.list_of_nicks;
     true ->
-      New_list_of_nicks = [Nick| St#server_st.list_of_nicks]
+      New_list_of_nicks = [Nick| St#backup3_st.list_of_nicks]
   end,
 
-  Channels=St#server_st.list_of_Channels,
+  Channels=St#backup3_st.list_of_Channels,
   Exists = lists:member(Channel, Channels),
   if Exists ->
     %return user_already_joined if already joined
@@ -50,24 +50,33 @@ handle_server(St, {join, Channel_name, Nick, Pid}) ->
         {reply, user_already_joined, St};
       true ->
         request(Channel, {add_nick_to_channel, Nick, Pid}),
-        New_state=St#server_st{list_of_nicks=New_list_of_nicks},
+        New_state=St#backup3_st{list_of_nicks=New_list_of_nicks},
+
+        io:fwrite("~p~n", [New_state]),
+
         {reply, ok, New_state}
     end;
   true ->
     start_channel(Channel, Nick, Pid),
     New_channels=[Channel | Channels],
-    New_state=St#server_st{list_of_Channels=New_channels, list_of_nicks=New_list_of_nicks},
+    New_state=St#backup3_st{list_of_Channels=New_channels, list_of_nicks=New_list_of_nicks},
+
+    io:fwrite("~p~n", [New_state]),
+
     {reply, ok, New_state}
     end;
 
-handle_server(St, {leave, Channel_name, Nick, Pid}) ->
+handle_backup3(St, {leave, Channel_name, Nick, Pid}) ->
   Channel=list_to_atom(Channel_name),
-  Channels=St#server_st.list_of_Channels,
+  Channels=St#backup3_st.list_of_Channels,
   Exists = lists:member(Channel, Channels),
   if Exists ->
       Nick_exists_in_channel=request(Channel, {check_nick_exists, Nick}),
       if Nick_exists_in_channel->
         Ans=request(Channel, {remove_nick_from_channel, Nick, Pid}),
+
+        io:fwrite("~p~n", [St]),
+
         {reply, Ans, St};
       true ->
           {reply, user_not_joined, St}
@@ -76,23 +85,23 @@ handle_server(St, {leave, Channel_name, Nick, Pid}) ->
       {reply, ok, St}
   end;
 
-handle_server(St, {check_nick_taken, Nick}) ->
-  Ans=lists:member(Nick, St#server_st.list_of_nicks),
+handle_backup3(St, {check_nick_taken, Nick}) ->
+  Ans=lists:member(Nick, St#backup3_st.list_of_nicks),
   {reply, Ans, St};
 
-handle_server(St, {change_nick, Nick, NewNick, Pid}) ->
-  Nicks=St#server_st.list_of_nicks,
+handle_backup3(St, {change_nick, Nick, NewNick, Pid}) ->
+  Nicks=St#backup3_st.list_of_nicks,
   New_list_of_nicks=[NewNick| Nicks--[Nick]],
-  [request(Channel, {change_nick, Nick, NewNick, Pid}) || Channel <- St#server_st.list_of_Channels],
-  New_state=St#server_st{list_of_nicks=New_list_of_nicks},
+  [request(Channel, {change_nick, Nick, NewNick, Pid}) || Channel <- St#backup3_st.list_of_Channels],
+  New_state=St#backup3_st{list_of_nicks=New_list_of_nicks},
   {reply, ok, New_state}.
 
-% Stop the server process registered to the given name,
+% Stop the backup3 process registered to the given name,
 % together with any other associated processes
-stop(ServerAtom) ->
+stop(backup3Atom) ->
     % TODO Implement function
     % Return ok
-    genserver:stop(ServerAtom),
+    genbackup3:stop(backup3Atom),
     ok.
 
   %%--------------------------------------------CHANNEL---------------------------------------------------------------------------
@@ -105,28 +114,44 @@ initial_channel_state(Nick, Pid) ->
 %Creates a empty channel, which Nick and Pid is a part of.
 start_channel(Channel_name, Nick, Pid) ->
   State=initial_channel_state(Nick, Pid),
-  genserver:start(Channel_name, State, fun handle_channel/2).
+  genbackup3:start(Channel_name, State, fun handle_channel/2).
 
 
 handle_channel(St, {check_nick_exists, Nick}) ->
-  Nicks_and_Pids=St#channel_st.list_of_nicks_and_Pids_in_channel,
-  Nick_exists=nick_exists(Nicks_and_Pids, Nick),
-  {reply, Nick_exists, St};
+  if St==[] ->
+      {reply, false, St};
+    true ->
+      Nicks_and_Pids=St#channel_st.list_of_nicks_and_Pids_in_channel,
+      Nick_exists=nick_exists(Nicks_and_Pids, Nick),
+      {reply, Nick_exists, St}
+  end;
 
 handle_channel(St, {add_nick_to_channel, Nick, Pid}) ->
-  Nicks_and_Pids=St#channel_st.list_of_nicks_and_Pids_in_channel,
+  if St==[] ->
+      Nicks_and_Pids=[];
+    true ->
+      Nicks_and_Pids=St#channel_st.list_of_nicks_and_Pids_in_channel
+  end,
 
   Nick_exists=nick_exists(Nicks_and_Pids, Nick),
   if Nick_exists ->
       {reply, nick_exists, St};
   true ->
       New_nicks_and_Pids=[{Nick, Pid}|Nicks_and_Pids],
-      New_state=St#channel_st{list_of_nicks_and_Pids_in_channel=New_nicks_and_Pids},
-      {reply, ok, New_state}
+    if St==[] ->
+          New_state=initial_channel_state(Nick, Pid);
+      true ->
+        New_state=St#channel_st{list_of_nicks_and_Pids_in_channel=New_nicks_and_Pids},
+        {reply, ok, New_state}
+    end,
   end;
 
 handle_channel(St, {remove_nick_from_channel, Nick, Pid}) ->
-  Nicks_and_Pids=St#channel_st.list_of_nicks_and_Pids_in_channel,
+  if St==[] ->
+      Nicks_and_Pids=[];
+    true ->
+      Nicks_and_Pids=St#channel_st.list_of_nicks_and_Pids_in_channel
+  end,
 
   Nick_exists=nick_exists(Nicks_and_Pids, Nick),
   if Nick_exists ->
@@ -138,17 +163,39 @@ handle_channel(St, {remove_nick_from_channel, Nick, Pid}) ->
   end;
 
 handle_channel(St, {message_send, Msg, Nick, Channel_name, Pid}) ->
-  Nicks_and_Pids=St#channel_st.list_of_nicks_and_Pids_in_channel,
+
+  io:fwrite("~p~n", [Channel_name]),
+
+  if St==[] ->
+      Nicks_and_Pids=[];
+    true ->
+      Nicks_and_Pids=St#channel_st.list_of_nicks_and_Pids_in_channel
+  end,
+
+  io:fwrite("~p~n", [Nicks_and_Pids]),
+  io:fwrite("~p~n", [Nick]),
+  io:fwrite("~p~n", [Pid]),
+
   Nick_exists=nick_exists(Nicks_and_Pids, Nick),
+
+  io:fwrite("~p~n", [Nick_exists]),
+
   if Nick_exists ->
-      create_message_sender(Msg, Channel_name, Nick, Nicks_and_Pids, Pid),
+
+      io:fwrite("~p~n", [Nick_exists]),
+
+      [send_message(Msg, Reciever, Channel_name, Nick)|| {_, Reciever} <- Nicks_and_Pids--[{Nick, Pid}]],
       {reply, ok, St};
     true ->
       {reply, user_not_joined, St}
   end;
 
 handle_channel(St, {change_nick, Nick, NewNick, Pid}) ->
-  Nicks_and_Pids=St#channel_st.list_of_nicks_and_Pids_in_channel,
+  if St==[] ->
+      Nicks_and_Pids=[];
+    true ->
+      Nicks_and_Pids=St#channel_st.list_of_nicks_and_Pids_in_channel
+  end,
   New_nicks_and_Pids=[{NewNick, Pid}| Nicks_and_Pids--[{Nick, Pid}]],
   New_state=St#channel_st{list_of_nicks_and_Pids_in_channel=New_nicks_and_Pids},
   {reply, ok, New_state}.
@@ -157,12 +204,6 @@ handle_channel(St, {change_nick, Nick, NewNick, Pid}) ->
   nick_exists([{Nick, _}|_], Nick)-> true;
   nick_exists([_|List_of_Nicks], Nick)-> nick_exists(List_of_Nicks, Nick);
   nick_exists( _, _)->false.
-
-  create_message_sender(Msg, Channel_name, Nick, Nicks_and_Pids, Pid) ->
-    spawn(fun() -> send_messages(Msg, Channel_name, Nick, Nicks_and_Pids, Pid) end).
-
-  send_messages(Msg, Channel_name, Nick, Nicks_and_Pids, Pid) ->
-    [send_message(Msg, Reciever, Channel_name, Nick)|| {_, Reciever} <- Nicks_and_Pids--[{Nick, Pid}]].
 
   send_message(Msg, Reciever, Channel_name, Sender) ->
 
@@ -176,4 +217,4 @@ handle_channel(St, {change_nick, Nick, NewNick, Pid}) ->
 
 %Simplify code
 request(Registered_name, Data) ->
-  genserver:request(Registered_name, Data).
+  genbackup3:request(Registered_name, Data).
