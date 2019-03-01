@@ -28,40 +28,34 @@ initial_state(Nick, GUIAtom, ServerAtom) ->
 
 % Join channel
 handle(St, {join, Channel}) ->
-    % TODO: Implement this function
-    % {reply, ok, St} ;
-    Not_registered=(whereis(St#client_st.server)==undefined),
+    Not_registered=(whereis(St#client_st.server)==undefined), %does the server exist?
     if Not_registered ->
-        {reply, {error, server_not_reached, "The server atom was unregistered."}, St};
+        {reply, {error, server_not_reached, "The server atom was unregistered."}, St}; %return error servor_not_reached
       true ->
-        Ans=request(St#client_st.server, {join, Channel, St#client_st.nick, self()}),
-        if Ans==user_already_joined ->
-            {reply, {error, user_already_joined, "The user had already joined the channel."}, St};
+        Ans=request(St#client_st.server, {join, Channel, St#client_st.nick, self()}), %otherwise try to join channel
+        if Ans==user_already_joined -> %if it already had joined
+            {reply, {error, user_already_joined, "The user had already joined the channel."}, St}; %return error user_already_joined
           true ->
-            {reply, ok, St}
+            {reply, ok, St} %otherwise no problems
         end
     end;
 
 % Leave channel
 handle(St, {leave, Channel}) ->
-    % TODO: Implement this function
-    % {reply, ok, St};
-    Ans=request(St#client_st.server, {leave, Channel, St#client_st.nick, self()}),
-    if Ans==user_not_joined ->
-        {reply, {error, user_not_joined, "The user has not joined the channel."}, St};
+    Ans=request(St#client_st.server, {leave, Channel, St#client_st.nick, self()}), %try to leave the channel
+    if Ans==user_not_joined -> %if not joined
+        {reply, {error, user_not_joined, "The user has not joined the channel."}, St}; %return error user_not_joined
       true ->
-        {reply, ok, St}
+        {reply, ok, St} %otherwise no problem
     end;
 
 % Sending message (from GUI, to channel)
 handle(St, {message_send, Channel, Msg}) ->
-    % TODO: Implement this function
-    % {reply, ok, St} ;
-    Ans=request(list_to_atom(Channel), {message_send, Msg, St#client_st.nick, list_to_atom(Channel), self()}),
-    if Ans==user_not_joined ->
-        {reply, {error, user_not_joined, "The user has not joined the channel, so it can't send messages in it."}, St};
+    Ans=request(list_to_atom(Channel), {message_send, Msg, St#client_st.nick, list_to_atom(Channel), self()}), %try to send messages to a channel
+    if Ans==user_not_joined -> %if user hasn't joined channel
+        {reply, {error, user_not_joined, "The user has not joined the channel, so it can't send messages in it."}, St}; %return error user_not_joined
       true ->
-        {reply, ok, St}
+        {reply, ok, St} %otherwise no problem
     end;
 
 % ---------------------------------------------------------------------------
@@ -72,14 +66,13 @@ handle(St, {message_send, Channel, Msg}) ->
 handle(St, whoami) ->
     {reply, St#client_st.nick, St} ;
 
-% Change nick
+% Change nick, updated for distinction assignment
 handle(St, {nick, NewNick}) ->
-    Nick_taken=request(St#client_st.server, {check_nick_taken, NewNick}),
-    if Nick_taken ->
-        {reply, {error, nick_taken, "The nickname is already taken."}, St};
-      true ->
-        request(St#client_st.server, {change_nick, St#client_st.nick, NewNick, self()}),
-        {reply, ok, St#client_st{nick = NewNick}}
+        Ans=request(St#client_st.server, {change_nick, St#client_st.nick, NewNick, self()}),
+        if Ans==nick_taken ->
+            {reply, {error, nick_taken, "The nick is already taken."}, St};
+          true ->
+            {reply, ok, St#client_st{nick = NewNick}}
     end;
 
 % Incoming message (from channel, to GUI)
