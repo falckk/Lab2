@@ -81,11 +81,9 @@ handle_server(St, {leave, Channel_name, Nick, Pid}) ->  %leave handle function
       {reply, ok, St} %if the channel did not exist then simply reply ok (nothing happened)
   end;
 
-handle_server(St, {shut_down}) ->
+handle_server(St, {shut_down_channels}) ->
   [stop_Channel(Channel) || Channel <- St#server_st.list_of_Channels],
-
-  io:fwrite("Got here~n"),
-  ok;
+  {reply, ok, St};
 
 handle_server(St, {change_nick, Nick, NewNick, Pid}) -> %change nick handle function (the client calls this only method if the nick is not already taken)
   Ans=lists:member(NewNick, St#server_st.list_of_nicks),
@@ -102,8 +100,14 @@ handle_server(St, {change_nick, Nick, NewNick, Pid}) -> %change nick handle func
 % Stop the server process registered to the given name,
 % together with any other associated processes
 stop(ServerAtom) -> %shut down the server
-    request(ServerAtom, {shut_down}),
+    request(ServerAtom, {shut_down_channels}),
+
+    io:fwrite("Request works~n"),
+
     genserver:stop(ServerAtom),
+
+    io:fwrite("Stop server works~n"),
+
     ok.
 
   %%--------------------------------------------CHANNEL---------------------------------------------------------------------------
@@ -131,7 +135,7 @@ handle_channel(St, {add_nick_to_channel, Nick, Pid}) ->
 
   Nick_exists=nick_exists(Nicks_and_Pids, Nick),
   %if nick exists
-  if Nick_exists ->
+  if Nick_exists ->&& erl -eval "eunit:test({test, test_client, message_throughput_test}), halt()."annel
       {reply, nick_exists, St}; %return reply nick_exists and leave the state unchanged
   true -> %otherwise
       New_nicks_and_Pids=[{Nick, Pid}|Nicks_and_Pids], %add the nick and pid to the list
@@ -148,7 +152,7 @@ handle_channel(St, {remove_nick_from_channel, Nick, Pid}) ->
       New_nicks_and_Pids=lists:delete({Nick, Pid}, Nicks_and_Pids), %delete it from the list
       New_state=St#channel_st{list_of_nicks_and_Pids_in_channel=New_nicks_and_Pids}, %update the state
       {reply, ok, New_state}; %and return the new state
-    true -> %if not
+    true -> %if not&& erl -eval "eunit:test({test, test_client, message_throughput_test}), halt()."annel
       {reply, user_not_joined, St} %return reply user_not_joined and leave state as it is
   end;
 
@@ -162,7 +166,7 @@ handle_channel(St, {message_send, Msg, Nick, Channel_name, Pid}) ->
     true ->
       {reply, user_not_joined, St} %otherwise reply with user_not_joined
   end;
-
+&& erl -eval "eunit:test({test, test_client, message_throughput_test}), halt()."annel
 %handle function for changing a nick in a channel
 handle_channel(St, {change_nick, Nick, NewNick, Pid}) ->
   Nicks_and_Pids=St#channel_st.list_of_nicks_and_Pids_in_channel, %list of nicks and pids
